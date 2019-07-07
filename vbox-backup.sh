@@ -25,6 +25,7 @@ DESTINATION=$1
 BACKUP_DAYS=$2
 REPORT_MAIL=$3
 BACKUP_ID=$(date +%Y%m%d.%H%M%S)
+TMP_DIR=/tmp/vbox-backup-tmp
 
 echo "Starting backup $BACKUP_ID" > /tmp/vbox-backup.log
 
@@ -57,10 +58,15 @@ process_vm() {
   }
   
   log "- Cloning to $vmname.bak"
-  VBoxManage clonevm $vmuuid --snapshot $snap --options keepallmacs,keepdisknames --basefolder $DESTINATION/$BACKUP_ID --name "$vmname.bak" >/dev/null 2>/tmp/vbox-backup.err
+  VBoxManage clonevm $vmuuid --snapshot $snap --options keepallmacs,keepdisknames,keephwuuids --basefolder $TMP_DIR --name "$vmname.bak" >/dev/null 2>/tmp/vbox-backup.err
   [ $? -eq 0 ] || {
     log "- ERROR: Could not clone snapshot: " $(geterr)
 	VBoxManage snapshot $vmuuid delete $snap || log "- ERROR: Could not delete snapshot of failed clone"
+	return 2
+  }
+  mv $TMP_DIR/$vmname.bak $DESTINATION/$BACKUP_ID/ >/dev/null 2>/tmp/vbox-backup.err
+  [ $? -eq 0 ] || {
+    log "- ERROR: Could not move snapshot clone to destination: " $(geterr)
 	return 2
   }
   
@@ -72,6 +78,12 @@ process_vm() {
   }
   
   return 0
+}
+
+rm -rf $TMP_DIR
+mkdir $TMP_DIR || {
+  echo "ERROR: Could not create directory $TMP_DIR" >&2
+  exit 1
 }
 
 mkdir $DESTINATION/$BACKUP_ID || {
